@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard Admin{% endblock %}
+{% block content %}
+<h2 class="mb-4">Dashboard do Suporte</h2>
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card p-3 bg-primary text-white"><h5>Total</h5><h3>{{ total }}</h3></div>
+  </div>
+  {% for status, count in status_counts.items() %}
+  <div class="col-md-3">
+    <div class="card p-3"><h6>{{ status }}</h6><h4>{{ count }}</h4></div>
+  </div>
+  {% endfor %}
+</div>
+<a href="{{ url_for('tickets_list') }}" class="btn btn-dark">Ir para painel de chamados</a>
+{% endblock %}
