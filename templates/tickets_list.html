@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+{% block title %}Chamados{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2>{% if current_user.is_admin() %}Painel de chamados{% else %}Meus chamados{% endif %}</h2>
+  {% if current_user.is_admin() %}
+  <a href="{{ url_for('tickets_export_csv') }}" class="btn btn-outline-success">Exportar CSV</a>
+  {% endif %}
+</div>
+
+<form method="get" class="card card-body mb-3 shadow-sm">
+  <div class="row g-2">
+    <div class="col-md-2"><input class="form-control" placeholder="Buscar ID/assunto" name="q" value="{{ filters.q }}"></div>
+    <div class="col-md-2">
+      <select class="form-select" name="status"><option value="">Status</option>{% for s in statuses %}<option value="{{ s }}" {% if filters.status == s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select>
+    </div>
+    <div class="col-md-2">
+      <select class="form-select" name="priority"><option value="">Prioridade</option>{% for s in priorities %}<option value="{{ s }}" {% if filters.priority == s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select>
+    </div>
+    <div class="col-md-2">
+      <select class="form-select" name="category"><option value="">Categoria</option>{% for s in categories %}<option value="{{ s }}" {% if filters.category == s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select>
+    </div>
+    {% if current_user.is_admin() %}
+    <div class="col-md-2">
+      <select class="form-select" name="department"><option value="">Setor</option>{% for d in departments %}<option value="{{ d }}" {% if filters.department == d %}selected{% endif %}>{{ d }}</option>{% endfor %}</select>
+    </div>
+    {% endif %}
+    <div class="col-md-2"><button class="btn btn-primary w-100">Filtrar</button></div>
+  </div>
+</form>
+
+<div class="card shadow-sm">
+<div class="table-responsive">
+<table class="table table-hover mb-0">
+<thead><tr><th>ID</th><th>Assunto</th><th>Usuário</th><th>Setor</th><th>Categoria</th><th>Prioridade</th><th>Status</th><th>Abertura</th></tr></thead>
+<tbody>
+{% for ticket in tickets.items %}
+<tr>
+  <td><a href="{{ url_for('ticket_detail', ticket_id=ticket.id) }}">#{{ ticket.id }}</a></td>
+  <td>{{ ticket.subject }}</td>
+  <td>{{ ticket.owner.name }}</td>
+  <td>{{ ticket.owner.department }}</td>
+  <td>{{ ticket.category }}</td>
+  <td>{{ ticket.priority }}</td>
+  <td>{{ ticket.status }}</td>
+  <td>{{ ticket.created_at.strftime('%d/%m/%Y %H:%M') }}</td>
+</tr>
+{% else %}
+<tr><td colspan="8" class="text-center py-4">Sem chamados no filtro atual.</td></tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+</div>
+
+<nav class="mt-3">
+  <ul class="pagination">
+    {% if tickets.has_prev %}
+      <li class="page-item"><a class="page-link" href="{{ url_for('tickets_list', page=tickets.prev_num, **filters) }}">Anterior</a></li>
+    {% endif %}
+    <li class="page-item active"><span class="page-link">Página {{ tickets.page }} de {{ tickets.pages or 1 }}</span></li>
+    {% if tickets.has_next %}
+      <li class="page-item"><a class="page-link" href="{{ url_for('tickets_list', page=tickets.next_num, **filters) }}">Próxima</a></li>
+    {% endif %}
+  </ul>
+</nav>
+{% endblock %}
