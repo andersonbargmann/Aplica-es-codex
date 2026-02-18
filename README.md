@@ -1,123 +1,95 @@
-# Sistema Help Desk TI (Flask)
+# Service Desk Flask (RBAC)
 
-Aplicação web completa para gestão de chamados de TI com autenticação, perfis de acesso (ADMIN/USER), histórico de mensagens, anexos e envio de e-mails automáticos.
+Sistema corporativo de chamados com níveis de acesso:
+- `USER` (abre e acompanha próprios chamados)
+- `SUPPORT` (atende chamados)
+- `ADMIN` (gestão total)
 
-## Tecnologias
+## Stack
+- Flask
+- Flask-Login
+- Flask-SQLAlchemy
+- SQLite (compatível com troca via `DATABASE_URL`)
+- python-dotenv
+- Bootstrap 5
 
-- **Backend:** Python + Flask
-- **Banco de dados:** SQLite (configurável por `DATABASE_URL` para MySQL/PostgreSQL)
-- **Frontend:** HTML + Bootstrap 5 responsivo
-- **Autenticação:** Flask-Login + hash seguro com Werkzeug
+## Estrutura
+- `app.py` (rotas + inicialização)
+- `models.py` (models e relacionamentos)
+- `auth_utils.py` (decorator `role_required`)
+- `email_utils.py` (env + `send_email`)
+- `templates/`
+- `static/`
 
-## Funcionalidades implementadas
-
-- Login com sessão autenticada
-- CRUD de usuários internos (somente ADMIN)
-- Perfis:
-  - **ADMIN:** gerencia usuários e todos os chamados
-  - **USER:** abre e acompanha apenas os próprios chamados
-- Abertura de chamados com:
-  - Categoria, prioridade, assunto, descrição
-  - Upload opcional (png/jpg/jpeg/pdf)
-  - Criação automática com status inicial `Aberto`
-- Painel de chamados com filtros por status, prioridade, categoria e setor
-- Busca por ID ou assunto
-- Paginação dos chamados
-- Atribuição de técnico (usuário ADMIN)
-- Atualização de status (Aberto, Em andamento, Resolvido, Fechado)
-- Registro de solução final
-- Histórico de mensagens (chat por chamado)
-- Exportação de chamados para CSV (ADMIN)
-- Emails automáticos:
-  - Ao abrir chamado (usuário + suporte)
-  - Ao atualizar status (usuário)
-
-## Estrutura do projeto
-
+## Como rodar (Windows)
+```powershell
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+copy .env.example .env
+python app.py
 ```
-app.py
-models.py
-templates/
-static/
-uploads/
-requirements.txt
-.env.example
-README.md
-```
+Abrir: `http://127.0.0.1:5000`
 
-## Como rodar no Windows
+## Usuário admin padrão
+Na inicialização, se não existir ADMIN:
+- email: `admin@local`
+- senha: `admin123`
 
-1. Criar e ativar ambiente virtual:
-   ```powershell
-   python -m venv venv
-   venv\Scripts\activate
-   ```
-2. Instalar dependências:
-   ```powershell
-   pip install -r requirements.txt
-   ```
-3. Configurar variáveis de ambiente:
-   - Copie `.env.example` para `.env` e ajuste os valores.
-4. Executar aplicação:
-   ```powershell
-   python app.py
-   ```
-5. Abrir no navegador:
-   - `http://127.0.0.1:5000`
+> Troque a senha imediatamente.
 
-## Usuário ADMIN padrão (primeiro start)
+## Perfis e permissões
+### USER
+- Acessa `GET /meus_chamados`
+- Abre chamado em `GET/POST /chamado/novo`
+- Vê detalhe em `GET /chamado/<id>` (somente próprios)
+- Comenta em `POST /chamado/<id>/comentario`
 
-No primeiro start, o sistema cria automaticamente:
+### SUPPORT
+- Acessa `GET /suporte/chamados`
+- Detalhe `GET /suporte/chamado/<id>`
+- Atualiza status `POST /suporte/chamado/<id>/status`
+- Atribui técnico `POST /suporte/chamado/<id>/atribuir`
+- Comenta (público/interno) `POST /suporte/chamado/<id>/comentario`
 
-- **Email:** `admin@local`
-- **Senha:** `admin123`
+### ADMIN
+- Dashboard `GET /admin/dashboard`
+- Usuários (CRUD + ativar/desativar)
+- Setores (CRUD com bloqueio de exclusão se vinculado)
+- Acesso também a chamados (`/admin/chamados` -> painel suporte)
 
-> **Importante:** altere essa senha imediatamente após o primeiro acesso.
-
-## Configuração SMTP (.env)
-
-Variáveis obrigatórias para envio de e-mail automático na abertura do chamado:
-
+## SMTP (.env)
+Variáveis:
 - `SMTP_HOST`
 - `SMTP_PORT`
 - `SMTP_USER`
 - `SMTP_PASS`
-- `SMTP_USE_TLS` (`true` ou `false`)
-- `SUPPORT_EMAIL` (e-mail fixo do suporte)
+- `SMTP_USE_TLS`
+- `SUPPORT_EMAIL`
 
-### Exemplo Gmail
-
+### Exemplo Gmail (senha de app)
 ```env
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=seu_email@gmail.com
 SMTP_PASS=sua_senha_de_app
 SMTP_USE_TLS=true
-SUPPORT_EMAIL=andersonbargmann@gmail.com
+SUPPORT_EMAIL=suporte@empresa.com
 ```
 
-> Para Gmail, use senha de app (2FA habilitado), não a senha normal da conta.
-
-### Exemplo Office365
-
+### Exemplo Office365 / Outlook
 ```env
 SMTP_HOST=smtp.office365.com
 SMTP_PORT=587
 SMTP_USER=seu_email@empresa.com
 SMTP_PASS=sua_senha
 SMTP_USE_TLS=true
-SUPPORT_EMAIL=andersonbargmann@gmail.com
+SUPPORT_EMAIL=suporte@empresa.com
 ```
 
-Se SMTP não estiver configurado corretamente, o chamado é criado normalmente e o erro de e-mail é registrado no log/console.
+## Notificações por e-mail
+- Ao abrir chamado: envia para solicitante e suporte
+- Ao status virar `Resolvido`/`Fechado`: envia para solicitante
+- Ao atribuir técnico: envia para solicitante
 
-## Banco de dados
-
-A aplicação cria automaticamente as tabelas ao iniciar:
-
-- `users`
-- `tickets`
-- `ticket_messages`
-- `attachments`
-
-Por padrão usa SQLite (`sqlite:///helpdesk.db`), mas você pode mudar para MySQL/PostgreSQL alterando `DATABASE_URL`.
+Se envio falhar, o chamado continua normalmente (erro apenas no log/console).

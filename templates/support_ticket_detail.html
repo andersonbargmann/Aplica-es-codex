@@ -1,0 +1,57 @@
+{% extends 'base.html' %}
+{% block title %}Atendimento #{{ ticket.id }}{% endblock %}
+{% block content %}
+<h2>Chamado #{{ ticket.id }} - {{ ticket.title }}</h2>
+<div class="row g-3">
+  <div class="col-lg-8">
+    <div class="card card-body mb-3">
+      <p><strong>Solicitante:</strong> {{ ticket.creator.name }}</p>
+      <p><strong>Setor:</strong> {{ ticket.department.name }}</p>
+      <p><strong>Prioridade:</strong> {{ ticket.priority }}</p>
+      <p><strong>Status:</strong> {{ ticket.status }}</p>
+      <p><strong>Descrição:</strong><br>{{ ticket.description }}</p>
+    </div>
+
+    <div class="card card-body mb-3">
+      <h5>Comentários</h5>
+      {% for c in ticket.comments|sort(attribute='created_at') %}
+      {% if not c.is_internal or current_user.role in ['SUPPORT','ADMIN'] %}
+      <div class="border-bottom py-2">
+        <div class="small text-muted">{{ c.author.name }} - {{ c.created_at.strftime('%d/%m/%Y %H:%M') }} {% if c.is_internal %}(Interno){% endif %}</div>
+        <div>{{ c.comment_text }}</div>
+      </div>
+      {% endif %}
+      {% endfor %}
+    </div>
+
+    <form method="post" action="{{ url_for('support_ticket_comment', id=ticket.id) }}" class="card card-body">
+      <label class="form-label">Comentário</label>
+      <textarea class="form-control mb-2" name="comment_text" rows="3" required></textarea>
+      <div class="form-check mb-2">
+        <input class="form-check-input" type="checkbox" name="is_internal" id="internal">
+        <label class="form-check-label" for="internal">Comentário interno</label>
+      </div>
+      <button class="btn btn-primary">Registrar comentário</button>
+    </form>
+  </div>
+
+  <div class="col-lg-4">
+    <form method="post" action="{{ url_for('support_ticket_status', id=ticket.id) }}" class="card card-body mb-3">
+      <label class="form-label">Alterar status</label>
+      <select class="form-select mb-2" name="status">
+        {% for s in statuses %}<option value="{{ s }}" {% if ticket.status==s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+      </select>
+      <button class="btn btn-success">Salvar status</button>
+    </form>
+
+    <form method="post" action="{{ url_for('support_ticket_assign', id=ticket.id) }}" class="card card-body">
+      <label class="form-label">Atribuir técnico</label>
+      <select class="form-select mb-2" name="assigned_to_user_id">
+        <option value="">Não atribuído</option>
+        {% for u in supporters %}<option value="{{ u.id }}" {% if ticket.assigned_to_user_id==u.id %}selected{% endif %}>{{ u.name }} ({{ u.role }})</option>{% endfor %}
+      </select>
+      <button class="btn btn-warning">Salvar atribuição</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

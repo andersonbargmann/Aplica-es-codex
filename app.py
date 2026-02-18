@@ -1,54 +1,33 @@
 import os
-from functools import wraps
 from pathlib import Path
 
 from dotenv import load_dotenv
-from flask import (
-    Flask,
-    Response,
-    flash,
-    redirect,
-    render_template,
-    request,
-    send_from_directory,
-    url_for,
-)
-from flask_login import (
-    LoginManager,
-    current_user,
-    login_required,
-    login_user,
-    logout_user,
-)
+from flask import Flask, flash, redirect, render_template, request, url_for
+from flask_login import LoginManager, current_user, login_required, login_user, logout_user
 from sqlalchemy import or_
 from werkzeug.security import check_password_hash, generate_password_hash
-from werkzeug.utils import secure_filename
 
+from auth_utils import role_required
 from email_utils import send_email
-from models import Attachment, Ticket, TicketMessage, User, db
+from models import Department, Ticket, TicketComment, User, db
 
 load_dotenv()
 
-BASE_DIR = Path(__file__).resolve().parent
-UPLOAD_FOLDER = BASE_DIR / "uploads"
-UPLOAD_FOLDER.mkdir(exist_ok=True)
-ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "pdf"}
-
-CATEGORIES = ["Rede", "Hardware", "Software", "Impressora", "Acesso", "Outros"]
-PRIORITIES = ["Baixa", "Média", "Alta", "Crítica"]
+PRIORITIES = ["Baixa", "Média", "Alta"]
 STATUSES = ["Aberto", "Em andamento", "Resolvido", "Fechado"]
+ROLES = ["USER", "SUPPORT", "ADMIN"]
+
+BASE_DIR = Path(__file__).resolve().parent
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-key")
 app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", "sqlite:///helpdesk.db")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-app.config["UPLOAD_FOLDER"] = str(UPLOAD_FOLDER)
 
 db.init_app(app)
 
 login_manager = LoginManager(app)
 login_manager.login_view = "login"
-login_manager.login_message = "Faça login para acessar o sistema."
 
 
 @login_manager.user_loader
@@ -56,90 +35,108 @@ def load_user(user_id):
     return User.query.get(int(user_id))
 
 
-def admin_required(func):
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        if not current_user.is_admin():
-            flash("Acesso permitido apenas para ADMIN.", "danger")
-            return redirect(url_for("dashboard"))
-        return func(*args, **kwargs)
-
-    return wrapper
-
-
-def allowed_file(filename):
-    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
-
-
-
-def notify_new_ticket(ticket):
+def send_new_ticket_notification(ticket):
     support_email = os.getenv("SUPPORT_EMAIL", "").strip()
-    opened_at = ticket.created_at.strftime("%d/%m/%Y %H:%M:%S")
-    subject = f"Novo chamado #{ticket.id} aberto - {ticket.subject}"
     body = (
-        f"Número do chamado: #{ticket.id}\n"
-        f"Título: {ticket.subject}\n"
+        f"ID do chamado: {ticket.id}\n"
+        f"Título: {ticket.title}\n"
         f"Descrição: {ticket.description}\n"
-        f"Usuário solicitante: {ticket.owner.name}\n"
-        f"Data/Hora de abertura: {opened_at}\n"
+        f"Solicitante: {ticket.creator.name}\n"
+        f"Data/Hora: {ticket.created_at.strftime('%d/%m/%Y %H:%M:%S')}\n"
         f"Status inicial: {ticket.status}\n"
     )
-
-    send_email(ticket.owner.email, subject, body)
-
+    subject = f"Novo chamado #{ticket.id} - {ticket.title}"
+    send_email(ticket.creator.email, subject, body)
     if support_email:
         send_email(support_email, subject, body)
-    else:
-        app.logger.warning("SUPPORT_EMAIL não configurado. E-mail para suporte não enviado.")
 
 
-def notify_status_change(ticket):
-    subject = f"Atualização do chamado #{ticket.id}"
+def send_status_notification(ticket):
+    if ticket.status not in {"Resolvido", "Fechado"}:
+        return
+    subject = f"Chamado #{ticket.id} atualizado para {ticket.status}"
     body = (
         f"Seu chamado #{ticket.id} foi atualizado.\n"
+        f"Título: {ticket.title}\n"
         f"Novo status: {ticket.status}\n"
-        f"Assunto: {ticket.subject}\n"
     )
-    send_email(ticket.owner.email, subject, body)
+    send_email(ticket.creator.email, subject, body)
 
 
-def bootstrap_admin_user():
-    if User.query.filter_by(email="admin@local").first():
+def send_assignment_notification(ticket):
+    if not ticket.assignee:
         return
-    admin = User(
-        name="Administrador",
-        email="admin@local",
-        department="TI",
-        password_hash=generate_password_hash("admin123"),
-        role="ADMIN",
+    subject = f"Chamado #{ticket.id} atribuído"
+    body = (
+        f"Chamado #{ticket.id} foi atribuído ao técnico {ticket.assignee.name}.\n"
+        f"Título: {ticket.title}\n"
+        f"Status atual: {ticket.status}\n"
     )
-    db.session.add(admin)
-    db.session.commit()
+    send_email(ticket.creator.email, subject, body)
+
+
+def post_login_target(user):
+    if user.role == "ADMIN":
+        return url_for("admin_dashboard")
+    if user.role == "SUPPORT":
+        return url_for("support_tickets")
+    return url_for("user_tickets")
+
+
+def seed_defaults():
+    default_dept = Department.query.filter_by(name="TI").first()
+    if not default_dept:
+        default_dept = Department(name="TI")
+        db.session.add(default_dept)
+        db.session.commit()
+
+    any_admin = User.query.filter_by(role="ADMIN").first()
+    if not any_admin:
+        admin = User(
+            name="Administrador",
+            email="admin@local",
+            password_hash=generate_password_hash("admin123"),
+            role="ADMIN",
+            department_id=default_dept.id,
+            is_active=True,
+        )
+        db.session.add(admin)
+        db.session.commit()
 
 
 @app.route("/")
 def index():
     if current_user.is_authenticated:
-        return redirect(url_for("dashboard"))
+        return redirect(url_for("post_login_redirect"))
     return redirect(url_for("login"))
+
+
+@app.route("/redirect")
+@login_required
+def post_login_redirect():
+    return redirect(post_login_target(current_user))
 
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if current_user.is_authenticated:
-        return redirect(url_for("dashboard"))
+        return redirect(url_for("post_login_redirect"))
 
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
         user = User.query.filter_by(email=email).first()
 
-        if user and check_password_hash(user.password_hash, password):
-            login_user(user)
-            flash("Login realizado com sucesso.", "success")
-            return redirect(url_for("dashboard"))
+        if not user or not check_password_hash(user.password_hash, password):
+            flash("Credenciais inválidas.", "danger")
+            return render_template("login.html")
 
-        flash("Credenciais inválidas.", "danger")
+        if not user.is_active:
+            flash("Usuário inativo. Contate o administrador.", "warning")
+            return render_template("login.html")
+
+        login_user(user)
+        return redirect(post_login_target(user))
 
     return render_template("login.html")
 
@@ -148,292 +145,343 @@ def login():
 @login_required
 def logout():
     logout_user()
-    flash("Você saiu do sistema.", "info")
     return redirect(url_for("login"))
 
 
-@app.route("/dashboard")
-@login_required
-def dashboard():
-    if current_user.is_admin():
-        status_counts = {
-            status: Ticket.query.filter_by(status=status).count() for status in STATUSES
-        }
-        total = Ticket.query.count()
-        return render_template("dashboard_admin.html", status_counts=status_counts, total=total)
-
-    recent_tickets = (
-        Ticket.query.filter_by(user_id=current_user.id)
-        .order_by(Ticket.created_at.desc())
-        .limit(10)
-        .all()
-    )
-    return render_template("dashboard_user.html", recent_tickets=recent_tickets)
+@app.route("/meus_chamados")
+@role_required("USER")
+def user_tickets():
+    tickets = Ticket.query.filter_by(created_by_user_id=current_user.id).order_by(Ticket.created_at.desc()).all()
+    return render_template("user_tickets.html", tickets=tickets)
 
 
-@app.route("/users")
-@login_required
-@admin_required
-def users_list():
-    users = User.query.order_by(User.created_at.desc()).all()
-    return render_template("users_list.html", users=users)
-
-
-@app.route("/users/create", methods=["GET", "POST"])
-@login_required
-@admin_required
-def users_create():
+@app.route("/chamado/novo", methods=["GET", "POST"])
+@role_required("USER")
+def user_ticket_create():
+    departments = Department.query.order_by(Department.name).all()
     if request.method == "POST":
-        email = request.form.get("email", "").strip().lower()
-        if User.query.filter_by(email=email).first():
-            flash("Já existe usuário com este email.", "danger")
-            return redirect(url_for("users_create"))
+        title = request.form.get("title", "").strip()
+        description = request.form.get("description", "").strip()
+        priority = request.form.get("priority", "Média")
+        department_id = request.form.get("department_id", type=int)
 
-        user = User(
-            name=request.form.get("name", "").strip(),
-            email=email,
-            department=request.form.get("department", "").strip(),
-            password_hash=generate_password_hash(request.form.get("password", "")),
-            role=request.form.get("role", "USER"),
-        )
-        db.session.add(user)
-        db.session.commit()
-        flash("Usuário criado com sucesso.", "success")
-        return redirect(url_for("users_list"))
+        if not title or not description or priority not in PRIORITIES or not department_id:
+            flash("Preencha os campos obrigatórios corretamente.", "danger")
+            return render_template("user_ticket_create.html", departments=departments, priorities=PRIORITIES)
 
-    return render_template("users_form.html", user=None)
-
-
-@app.route("/users/<int:user_id>/edit", methods=["GET", "POST"])
-@login_required
-@admin_required
-def users_edit(user_id):
-    user = User.query.get_or_404(user_id)
-
-    if request.method == "POST":
-        email = request.form.get("email", "").strip().lower()
-        exists = User.query.filter(User.email == email, User.id != user.id).first()
-        if exists:
-            flash("Email já está em uso.", "danger")
-            return redirect(url_for("users_edit", user_id=user.id))
-
-        user.name = request.form.get("name", "").strip()
-        user.email = email
-        user.department = request.form.get("department", "").strip()
-        user.role = request.form.get("role", "USER")
-
-        new_password = request.form.get("password", "")
-        if new_password:
-            user.password_hash = generate_password_hash(new_password)
-
-        db.session.commit()
-        flash("Usuário atualizado com sucesso.", "success")
-        return redirect(url_for("users_list"))
-
-    return render_template("users_form.html", user=user)
-
-
-@app.route("/users/<int:user_id>/delete", methods=["POST"])
-@login_required
-@admin_required
-def users_delete(user_id):
-    user = User.query.get_or_404(user_id)
-    if user.id == current_user.id:
-        flash("Você não pode remover seu próprio usuário.", "danger")
-        return redirect(url_for("users_list"))
-
-    db.session.delete(user)
-    db.session.commit()
-    flash("Usuário removido com sucesso.", "success")
-    return redirect(url_for("users_list"))
-
-
-@app.route("/tickets/new", methods=["GET", "POST"])
-@login_required
-def ticket_new():
-    if request.method == "POST":
         ticket = Ticket(
-            user_id=current_user.id,
-            category=request.form.get("category", "Outros"),
-            priority=request.form.get("priority", "Baixa"),
-            subject=request.form.get("subject", "").strip(),
-            description=request.form.get("description", "").strip(),
+            title=title,
+            description=description,
+            priority=priority,
             status="Aberto",
+            created_by_user_id=current_user.id,
+            assigned_to_user_id=None,
+            department_id=department_id,
         )
         db.session.add(ticket)
         db.session.commit()
 
-        message = TicketMessage(
+        comment = TicketComment(
             ticket_id=ticket.id,
             user_id=current_user.id,
-            message=f"Chamado aberto por {current_user.name}.\n\n{ticket.description}",
+            comment_text=f"Chamado aberto por {current_user.name}",
+            is_internal=False,
         )
-        db.session.add(message)
-
-        file = request.files.get("attachment")
-        if file and file.filename and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
-            save_name = f"ticket_{ticket.id}_{filename}"
-            save_path = UPLOAD_FOLDER / save_name
-            file.save(save_path)
-            attachment = Attachment(
-                ticket_id=ticket.id,
-                filename=filename,
-                filepath=save_name,
-            )
-            db.session.add(attachment)
-
+        db.session.add(comment)
         db.session.commit()
-        notify_new_ticket(ticket)
+
+        send_new_ticket_notification(ticket)
         flash(f"Chamado #{ticket.id} aberto com sucesso.", "success")
-        return redirect(url_for("ticket_detail", ticket_id=ticket.id))
+        return redirect(url_for("ticket_detail", id=ticket.id))
 
-    return render_template("ticket_new.html", categories=CATEGORIES, priorities=PRIORITIES)
+    return render_template("user_ticket_create.html", departments=departments, priorities=PRIORITIES)
 
 
-@app.route("/tickets")
+@app.route("/chamado/<int:id>")
 @login_required
-def tickets_list():
-    page = request.args.get("page", 1, type=int)
+def ticket_detail(id):
+    ticket = Ticket.query.get_or_404(id)
+    if current_user.role == "USER" and ticket.created_by_user_id != current_user.id:
+        flash("Você não pode acessar este chamado.", "danger")
+        return redirect(url_for("user_tickets"))
+
+    if current_user.role in {"SUPPORT", "ADMIN"}:
+        return render_template("support_ticket_detail.html", ticket=ticket)
+
+    public_comments = [c for c in ticket.comments if not c.is_internal]
+    return render_template("ticket_detail.html", ticket=ticket, comments=public_comments)
+
+
+@app.route("/chamado/<int:id>/comentario", methods=["POST"])
+@role_required("USER")
+def user_comment(id):
+    ticket = Ticket.query.get_or_404(id)
+    if ticket.created_by_user_id != current_user.id:
+        flash("Você não pode comentar neste chamado.", "danger")
+        return redirect(url_for("user_tickets"))
+
+    comment_text = request.form.get("comment_text", "").strip()
+    if not comment_text:
+        flash("Comentário vazio.", "warning")
+        return redirect(url_for("ticket_detail", id=id))
+
+    db.session.add(TicketComment(ticket_id=ticket.id, user_id=current_user.id, comment_text=comment_text, is_internal=False))
+    db.session.commit()
+    return redirect(url_for("ticket_detail", id=id))
+
+
+@app.route("/suporte/chamados")
+@role_required("SUPPORT", "ADMIN")
+def support_tickets():
     status = request.args.get("status", "")
     priority = request.args.get("priority", "")
-    category = request.args.get("category", "")
-    department = request.args.get("department", "")
-    query_text = request.args.get("q", "").strip()
+    department_id = request.args.get("department_id", type=int)
+    q = request.args.get("q", "").strip()
 
-    query = Ticket.query.join(User, Ticket.user_id == User.id)
-
-    if not current_user.is_admin():
-        query = query.filter(Ticket.user_id == current_user.id)
-
+    query = Ticket.query
     if status:
-        query = query.filter(Ticket.status == status)
+        query = query.filter_by(status=status)
     if priority:
-        query = query.filter(Ticket.priority == priority)
-    if category:
-        query = query.filter(Ticket.category == category)
-    if department and current_user.is_admin():
-        query = query.filter(User.department == department)
-    if query_text:
-        if query_text.isdigit():
-            query = query.filter(or_(Ticket.id == int(query_text), Ticket.subject.ilike(f"%{query_text}%")))
+        query = query.filter_by(priority=priority)
+    if department_id:
+        query = query.filter_by(department_id=department_id)
+    if q:
+        if q.isdigit():
+            query = query.filter(or_(Ticket.id == int(q), Ticket.title.ilike(f"%{q}%")))
         else:
-            query = query.filter(Ticket.subject.ilike(f"%{query_text}%"))
+            query = query.filter(Ticket.title.ilike(f"%{q}%"))
 
-    tickets = query.order_by(Ticket.created_at.desc()).paginate(page=page, per_page=10)
-
-    departments = []
-    if current_user.is_admin():
-        departments = [
-            row[0]
-            for row in db.session.query(User.department)
-            .distinct()
-            .order_by(User.department)
-            .all()
-        ]
-
+    tickets = query.order_by(Ticket.created_at.desc()).all()
+    departments = Department.query.order_by(Department.name).all()
     return render_template(
-        "tickets_list.html",
+        "support_tickets.html",
         tickets=tickets,
+        departments=departments,
         statuses=STATUSES,
         priorities=PRIORITIES,
-        categories=CATEGORIES,
-        departments=departments,
-        filters={
-            "status": status,
-            "priority": priority,
-            "category": category,
-            "department": department,
-            "q": query_text,
-        },
+        filters={"status": status, "priority": priority, "department_id": department_id, "q": q},
     )
 
 
-@app.route("/tickets/<int:ticket_id>", methods=["GET", "POST"])
-@login_required
-def ticket_detail(ticket_id):
-    ticket = Ticket.query.get_or_404(ticket_id)
-
-    if not current_user.is_admin() and ticket.user_id != current_user.id:
-        flash("Você não tem permissão para acessar este chamado.", "danger")
-        return redirect(url_for("tickets_list"))
-
-    if request.method == "POST":
-        message_text = request.form.get("message", "").strip()
-        if message_text:
-            message = TicketMessage(ticket_id=ticket.id, user_id=current_user.id, message=message_text)
-            db.session.add(message)
-            db.session.commit()
-            flash("Mensagem registrada no chamado.", "success")
-        return redirect(url_for("ticket_detail", ticket_id=ticket.id))
-
-    admins = User.query.filter_by(role="ADMIN").order_by(User.name).all() if current_user.is_admin() else []
-    return render_template("ticket_detail.html", ticket=ticket, statuses=STATUSES, admins=admins)
+@app.route("/suporte/chamado/<int:id>")
+@role_required("SUPPORT", "ADMIN")
+def support_ticket_detail(id):
+    ticket = Ticket.query.get_or_404(id)
+    supporters = User.query.filter(User.role.in_(["SUPPORT", "ADMIN"]), User.is_active.is_(True)).order_by(User.name).all()
+    return render_template("support_ticket_detail.html", ticket=ticket, supporters=supporters, statuses=STATUSES)
 
 
-@app.route("/tickets/<int:ticket_id>/update", methods=["POST"])
-@login_required
-@admin_required
-def ticket_update(ticket_id):
-    ticket = Ticket.query.get_or_404(ticket_id)
-    ticket.status = request.form.get("status", ticket.status)
-    assigned_to = request.form.get("assigned_to", "")
-    solution = request.form.get("solution", "").strip()
+@app.route("/suporte/chamado/<int:id>/status", methods=["POST"])
+@role_required("SUPPORT", "ADMIN")
+def support_ticket_status(id):
+    ticket = Ticket.query.get_or_404(id)
+    status = request.form.get("status", "")
+    if status not in STATUSES:
+        flash("Status inválido.", "danger")
+        return redirect(url_for("support_ticket_detail", id=id))
 
-    ticket.assigned_to = int(assigned_to) if assigned_to.isdigit() else None
+    ticket.status = status
+    db.session.commit()
+    send_status_notification(ticket)
+    flash("Status atualizado.", "success")
+    return redirect(url_for("support_ticket_detail", id=id))
 
-    if solution and ticket.status in {"Resolvido", "Fechado"}:
-        message = TicketMessage(
-            ticket_id=ticket.id,
-            user_id=current_user.id,
-            message=f"Solução final registrada:\n{solution}",
-        )
-        db.session.add(message)
+
+@app.route("/suporte/chamado/<int:id>/atribuir", methods=["POST"])
+@role_required("SUPPORT", "ADMIN")
+def support_ticket_assign(id):
+    ticket = Ticket.query.get_or_404(id)
+    assigned_to = request.form.get("assigned_to_user_id", type=int)
+    if not assigned_to:
+        ticket.assigned_to_user_id = None
+    else:
+        user = User.query.get(assigned_to)
+        if not user or user.role not in {"SUPPORT", "ADMIN"}:
+            flash("Técnico inválido.", "danger")
+            return redirect(url_for("support_ticket_detail", id=id))
+        ticket.assigned_to_user_id = assigned_to
 
     db.session.commit()
-    notify_status_change(ticket)
-    flash("Chamado atualizado com sucesso.", "success")
-    return redirect(url_for("ticket_detail", ticket_id=ticket.id))
+    send_assignment_notification(ticket)
+    flash("Atribuição atualizada.", "success")
+    return redirect(url_for("support_ticket_detail", id=id))
 
 
-@app.route("/tickets/export/csv")
-@login_required
-@admin_required
-def tickets_export_csv():
-    tickets = Ticket.query.order_by(Ticket.created_at.desc()).all()
+@app.route("/suporte/chamado/<int:id>/comentario", methods=["POST"])
+@role_required("SUPPORT", "ADMIN")
+def support_ticket_comment(id):
+    ticket = Ticket.query.get_or_404(id)
+    comment_text = request.form.get("comment_text", "").strip()
+    is_internal = request.form.get("is_internal") == "on"
+    if not comment_text:
+        flash("Comentário vazio.", "warning")
+        return redirect(url_for("support_ticket_detail", id=id))
 
-    def generate():
-        yield "id,usuario,email,setor,categoria,prioridade,assunto,status,aberto_em\n"
-        for t in tickets:
-            row = [
-                str(t.id),
-                t.owner.name,
-                t.owner.email,
-                t.owner.department,
-                t.category,
-                t.priority,
-                t.subject.replace(",", " "),
-                t.status,
-                t.created_at.strftime("%Y-%m-%d %H:%M:%S"),
-            ]
-            yield ",".join(row) + "\n"
-
-    return Response(
-        generate(),
-        mimetype="text/csv",
-        headers={"Content-Disposition": "attachment; filename=chamados.csv"},
-    )
+    db.session.add(TicketComment(ticket_id=ticket.id, user_id=current_user.id, comment_text=comment_text, is_internal=is_internal))
+    db.session.commit()
+    return redirect(url_for("support_ticket_detail", id=id))
 
 
-@app.route("/uploads/<path:filename>")
-@login_required
-def uploaded_file(filename):
-    return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
+@app.route("/admin/dashboard")
+@role_required("ADMIN")
+def admin_dashboard():
+    stats = {s: Ticket.query.filter_by(status=s).count() for s in STATUSES}
+    total_users = User.query.count()
+    total_departments = Department.query.count()
+    return render_template("admin_dashboard.html", stats=stats, total_users=total_users, total_departments=total_departments)
+
+
+@app.route("/admin/chamados")
+@role_required("ADMIN")
+def admin_tickets():
+    return redirect(url_for("support_tickets"))
+
+
+@app.route("/admin/usuarios")
+@role_required("ADMIN")
+def admin_users():
+    users = User.query.order_by(User.created_at.desc()).all()
+    return render_template("admin_users.html", users=users)
+
+
+@app.route("/admin/usuarios/novo", methods=["GET", "POST"])
+@role_required("ADMIN")
+def admin_user_create():
+    departments = Department.query.order_by(Department.name).all()
+    if request.method == "POST":
+        email = request.form.get("email", "").strip().lower()
+        if User.query.filter_by(email=email).first():
+            flash("Email já cadastrado.", "danger")
+            return render_template("admin_user_form.html", departments=departments, roles=ROLES, user=None)
+
+        user = User(
+            name=request.form.get("name", "").strip(),
+            email=email,
+            password_hash=generate_password_hash(request.form.get("password", "")),
+            role=request.form.get("role", "USER"),
+            department_id=request.form.get("department_id", type=int),
+            is_active=request.form.get("is_active") == "on",
+        )
+        db.session.add(user)
+        db.session.commit()
+        return redirect(url_for("admin_users"))
+
+    return render_template("admin_user_form.html", departments=departments, roles=ROLES, user=None)
+
+
+@app.route("/admin/usuarios/<int:id>/editar", methods=["GET", "POST"])
+@role_required("ADMIN")
+def admin_user_edit(id):
+    user = User.query.get_or_404(id)
+    departments = Department.query.order_by(Department.name).all()
+
+    if request.method == "POST":
+        email = request.form.get("email", "").strip().lower()
+        existing = User.query.filter(User.email == email, User.id != user.id).first()
+        if existing:
+            flash("Email já cadastrado.", "danger")
+            return render_template("admin_user_form.html", departments=departments, roles=ROLES, user=user)
+
+        user.name = request.form.get("name", "").strip()
+        user.email = email
+        user.role = request.form.get("role", "USER")
+        user.department_id = request.form.get("department_id", type=int)
+        user.is_active = request.form.get("is_active") == "on"
+
+        password = request.form.get("password", "")
+        if password:
+            user.password_hash = generate_password_hash(password)
+
+        db.session.commit()
+        return redirect(url_for("admin_users"))
+
+    return render_template("admin_user_form.html", departments=departments, roles=ROLES, user=user)
+
+
+@app.route("/admin/usuarios/<int:id>/excluir", methods=["POST"])
+@role_required("ADMIN")
+def admin_user_delete(id):
+    user = User.query.get_or_404(id)
+    if user.id == current_user.id:
+        flash("Você não pode excluir seu próprio usuário.", "danger")
+        return redirect(url_for("admin_users"))
+    db.session.delete(user)
+    db.session.commit()
+    return redirect(url_for("admin_users"))
+
+
+@app.route("/admin/usuarios/<int:id>/ativar_desativar", methods=["POST"])
+@role_required("ADMIN")
+def admin_user_toggle(id):
+    user = User.query.get_or_404(id)
+    user.is_active = not user.is_active
+    db.session.commit()
+    return redirect(url_for("admin_users"))
+
+
+@app.route("/admin/setores")
+@role_required("ADMIN")
+def admin_departments():
+    departments = Department.query.order_by(Department.name).all()
+    return render_template("admin_departments.html", departments=departments)
+
+
+@app.route("/admin/setores/novo", methods=["GET", "POST"])
+@role_required("ADMIN")
+def admin_department_create():
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        if not name:
+            flash("Nome é obrigatório.", "danger")
+            return render_template("admin_department_form.html", department=None)
+        if Department.query.filter_by(name=name).first():
+            flash("Setor já existe.", "danger")
+            return render_template("admin_department_form.html", department=None)
+        db.session.add(Department(name=name))
+        db.session.commit()
+        return redirect(url_for("admin_departments"))
+
+    return render_template("admin_department_form.html", department=None)
+
+
+@app.route("/admin/setores/<int:id>/editar", methods=["GET", "POST"])
+@role_required("ADMIN")
+def admin_department_edit(id):
+    department = Department.query.get_or_404(id)
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        if not name:
+            flash("Nome é obrigatório.", "danger")
+            return render_template("admin_department_form.html", department=department)
+        existing = Department.query.filter(Department.name == name, Department.id != department.id).first()
+        if existing:
+            flash("Setor já existe.", "danger")
+            return render_template("admin_department_form.html", department=department)
+        department.name = name
+        db.session.commit()
+        return redirect(url_for("admin_departments"))
+
+    return render_template("admin_department_form.html", department=department)
+
+
+@app.route("/admin/setores/<int:id>/excluir", methods=["POST"])
+@role_required("ADMIN")
+def admin_department_delete(id):
+    department = Department.query.get_or_404(id)
+    has_users = User.query.filter_by(department_id=department.id).count() > 0
+    has_tickets = Ticket.query.filter_by(department_id=department.id).count() > 0
+    if has_users or has_tickets:
+        flash("Não é possível excluir setor com usuários ou chamados vinculados.", "danger")
+        return redirect(url_for("admin_departments"))
+
+    db.session.delete(department)
+    db.session.commit()
+    return redirect(url_for("admin_departments"))
 
 
 with app.app_context():
     db.create_all()
-    bootstrap_admin_user()
+    seed_defaults()
 
 
 if __name__ == "__main__":

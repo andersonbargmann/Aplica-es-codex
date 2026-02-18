@@ -1,0 +1,10 @@
+{% extends 'base.html' %}
+{% block title %}{{ 'Editar' if department else 'Novo' }} Setor{% endblock %}
+{% block content %}
+<h2>{{ 'Editar' if department else 'Novo' }} Setor</h2>
+<form method="post" class="card card-body">
+  <label class="form-label">Nome</label>
+  <input class="form-control mb-3" name="name" required value="{{ department.name if department else '' }}">
+  <button class="btn btn-success">Salvar</button>
+</form>
+{% endblock %}

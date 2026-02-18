@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block title %}Setores{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between mb-3">
+  <h2>Setores</h2>
+  <a href="{{ url_for('admin_department_create') }}" class="btn btn-primary">Novo setor</a>
+</div>
+<table class="table table-striped">
+  <thead><tr><th>Nome</th><th>Criado em</th><th>Ações</th></tr></thead>
+  <tbody>
+    {% for d in departments %}
+    <tr>
+      <td>{{ d.name }}</td>
+      <td>{{ d.created_at.strftime('%d/%m/%Y') }}</td>
+      <td>
+        <a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin_department_edit', id=d.id) }}">Editar</a>
+        <form class="d-inline" method="post" action="{{ url_for('admin_department_delete', id=d.id) }}" onsubmit="return confirm('Excluir setor?')"><button class="btn btn-sm btn-outline-danger">Excluir</button></form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

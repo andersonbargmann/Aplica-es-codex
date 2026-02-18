@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+{% block title %}Chamados - Suporte{% endblock %}
+{% block content %}
+<h2>Chamados</h2>
+<form method="get" class="card card-body mb-3">
+  <div class="row g-2">
+    <div class="col-md-3"><input name="q" class="form-control" placeholder="Buscar por ID/título" value="{{ filters.q }}"></div>
+    <div class="col-md-2">
+      <select class="form-select" name="status"><option value="">Status</option>{% for s in statuses %}<option value="{{ s }}" {% if filters.status==s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select>
+    </div>
+    <div class="col-md-2">
+      <select class="form-select" name="priority"><option value="">Prioridade</option>{% for p in priorities %}<option value="{{ p }}" {% if filters.priority==p %}selected{% endif %}>{{ p }}</option>{% endfor %}</select>
+    </div>
+    <div class="col-md-3">
+      <select class="form-select" name="department_id"><option value="">Setor</option>{% for d in departments %}<option value="{{ d.id }}" {% if filters.department_id==d.id %}selected{% endif %}>{{ d.name }}</option>{% endfor %}</select>
+    </div>
+    <div class="col-md-2"><button class="btn btn-primary w-100">Filtrar</button></div>
+  </div>
+</form>
+<table class="table table-hover">
+  <thead><tr><th>ID</th><th>Título</th><th>Usuário</th><th>Setor</th><th>Prioridade</th><th>Status</th></tr></thead>
+  <tbody>
+    {% for t in tickets %}
+    <tr>
+      <td><a href="{{ url_for('support_ticket_detail', id=t.id) }}">#{{ t.id }}</a></td>
+      <td>{{ t.title }}</td>
+      <td>{{ t.creator.name }}</td>
+      <td>{{ t.department.name }}</td>
+      <td>{{ t.priority }}</td>
+      <td>{{ t.status }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" class="text-center">Sem chamados.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
