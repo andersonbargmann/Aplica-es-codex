@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% block title %}Novo Chamado{% endblock %}
+{% block content %}
+<h2>Abrir Chamado</h2>
+<form method="post" class="card card-body shadow-sm">
+  <div class="mb-3">
+    <label class="form-label">Título</label>
+    <input class="form-control" name="title" required>
+  </div>
+  <div class="mb-3">
+    <label class="form-label">Descrição</label>
+    <textarea class="form-control" name="description" rows="5" required></textarea>
+  </div>
+  <div class="row">
+    <div class="col-md-4 mb-3">
+      <label class="form-label">Prioridade</label>
+      <select class="form-select" name="priority">
+        {% for p in priorities %}<option>{{ p }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-md-8 mb-3">
+      <label class="form-label">Setor</label>
+      <select class="form-select" name="department_id" required>
+        <option value="">Selecione...</option>
+        {% for d in departments %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}
+      </select>
+    </div>
+  </div>
+  <button class="btn btn-success">Criar chamado</button>
+</form>
+{% endblock %}

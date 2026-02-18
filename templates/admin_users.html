@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% block title %}Usuários{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between mb-3">
+  <h2>Usuários</h2>
+  <a href="{{ url_for('admin_user_create') }}" class="btn btn-primary">Novo usuário</a>
+</div>
+<table class="table table-striped">
+  <thead><tr><th>Nome</th><th>Email</th><th>Role</th><th>Setor</th><th>Ativo</th><th>Ações</th></tr></thead>
+  <tbody>
+    {% for u in users %}
+    <tr>
+      <td>{{ u.name }}</td>
+      <td>{{ u.email }}</td>
+      <td>{{ u.role }}</td>
+      <td>{{ u.department.name if u.department else '-' }}</td>
+      <td>{{ 'Sim' if u.is_active else 'Não' }}</td>
+      <td>
+        <a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin_user_edit', id=u.id) }}">Editar</a>
+        <form class="d-inline" method="post" action="{{ url_for('admin_user_toggle', id=u.id) }}"><button class="btn btn-sm btn-outline-warning">Ativar/Desativar</button></form>
+        {% if u.id != current_user.id %}<form class="d-inline" method="post" action="{{ url_for('admin_user_delete', id=u.id) }}" onsubmit="return confirm('Excluir usuário?')"><button class="btn btn-sm btn-outline-danger">Excluir</button></form>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

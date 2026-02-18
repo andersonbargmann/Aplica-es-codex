@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard Admin{% endblock %}
+{% block content %}
+<h2>Dashboard Administrativo</h2>
+<div class="row g-3">
+  {% for status, count in stats.items() %}
+  <div class="col-md-3"><div class="card p-3"><strong>{{ status }}</strong><h3>{{ count }}</h3></div></div>
+  {% endfor %}
+</div>
+<div class="mt-3">
+  <span class="badge bg-secondary">Usuários: {{ total_users }}</span>
+  <span class="badge bg-secondary">Setores: {{ total_departments }}</span>
+</div>
+{% endblock %}

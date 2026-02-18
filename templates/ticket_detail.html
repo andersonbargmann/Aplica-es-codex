@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+{% block title %}Chamado #{{ ticket.id }}{% endblock %}
+{% block content %}
+<h2>Chamado #{{ ticket.id }} - {{ ticket.title }}</h2>
+<div class="card card-body mb-3">
+  <p><strong>Status:</strong> {{ ticket.status }}</p>
+  <p><strong>Prioridade:</strong> {{ ticket.priority }}</p>
+  <p><strong>Setor:</strong> {{ ticket.department.name }}</p>
+  <p><strong>Descrição:</strong><br>{{ ticket.description }}</p>
+</div>
+
+<div class="card card-body mb-3">
+  <h5>Comentários</h5>
+  {% for c in comments %}
+    <div class="border-bottom py-2">
+      <div class="small text-muted">{{ c.author.name }} - {{ c.created_at.strftime('%d/%m/%Y %H:%M') }}</div>
+      <div>{{ c.comment_text }}</div>
+    </div>
+  {% else %}
+    <p class="text-muted">Sem comentários.</p>
+  {% endfor %}
+</div>
+
+<form method="post" action="{{ url_for('user_comment', id=ticket.id) }}" class="card card-body">
+  <label class="form-label">Novo comentário</label>
+  <textarea class="form-control mb-2" name="comment_text" rows="3" required></textarea>
+  <button class="btn btn-primary">Comentar</button>
+</form>
+{% endblock %}
