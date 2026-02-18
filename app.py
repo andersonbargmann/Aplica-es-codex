@@ -1,6 +1,4 @@
 import os
-import smtplib
-from email.mime.text import MIMEText
 from functools import wraps
 from pathlib import Path
 
@@ -26,6 +24,7 @@ from sqlalchemy import or_
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
+from email_utils import send_email
 from models import Attachment, Ticket, TicketMessage, User, db
 
 load_dotenv()
@@ -72,44 +71,26 @@ def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
-def send_email(subject, body, recipients):
-    smtp_host = os.getenv("SMTP_HOST")
-    smtp_port = int(os.getenv("SMTP_PORT", "587"))
-    smtp_user = os.getenv("SMTP_USER")
-    smtp_pass = os.getenv("SMTP_PASS")
-    smtp_tls = os.getenv("SMTP_TLS", "true").lower() == "true"
-
-    if not smtp_host or not recipients:
-        return
-
-    sender = smtp_user or "no-reply@helpdesk.local"
-    msg = MIMEText(body, "plain", "utf-8")
-    msg["Subject"] = subject
-    msg["From"] = sender
-    msg["To"] = ", ".join(recipients)
-
-    try:
-        with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as server:
-            if smtp_tls:
-                server.starttls()
-            if smtp_user and smtp_pass:
-                server.login(smtp_user, smtp_pass)
-            server.sendmail(sender, recipients, msg.as_string())
-    except Exception as exc:
-        app.logger.warning("Falha ao enviar email: %s", exc)
-
 
 def notify_new_ticket(ticket):
-    support_email = os.getenv("EMAIL_SUPORTE", "suporte@empresa.com")
-    subject = f"Novo chamado #{ticket.id} aberto"
+    support_email = os.getenv("SUPPORT_EMAIL", "").strip()
+    opened_at = ticket.created_at.strftime("%d/%m/%Y %H:%M:%S")
+    subject = f"Novo chamado #{ticket.id} aberto - {ticket.subject}"
     body = (
-        f"Chamado #{ticket.id}\n"
-        f"Assunto: {ticket.subject}\n"
-        f"Categoria: {ticket.category}\n"
-        f"Prioridade: {ticket.priority}\n"
-        f"Status: {ticket.status}\n"
+        f"Número do chamado: #{ticket.id}\n"
+        f"Título: {ticket.subject}\n"
+        f"Descrição: {ticket.description}\n"
+        f"Usuário solicitante: {ticket.owner.name}\n"
+        f"Data/Hora de abertura: {opened_at}\n"
+        f"Status inicial: {ticket.status}\n"
     )
-    send_email(subject, body, [ticket.owner.email, support_email])
+
+    send_email(ticket.owner.email, subject, body)
+
+    if support_email:
+        send_email(support_email, subject, body)
+    else:
+        app.logger.warning("SUPPORT_EMAIL não configurado. E-mail para suporte não enviado.")
 
 
 def notify_status_change(ticket):
@@ -119,7 +100,7 @@ def notify_status_change(ticket):
         f"Novo status: {ticket.status}\n"
         f"Assunto: {ticket.subject}\n"
     )
-    send_email(subject, body, [ticket.owner.email])
+    send_email(ticket.owner.email, subject, body)
 
 
 def bootstrap_admin_user():

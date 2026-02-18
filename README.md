@@ -76,14 +76,40 @@ No primeiro start, o sistema cria automaticamente:
 
 ## Configuração SMTP (.env)
 
+Variáveis obrigatórias para envio de e-mail automático na abertura do chamado:
+
 - `SMTP_HOST`
 - `SMTP_PORT`
 - `SMTP_USER`
 - `SMTP_PASS`
-- `SMTP_TLS`
-- `EMAIL_SUPORTE`
+- `SMTP_USE_TLS` (`true` ou `false`)
+- `SUPPORT_EMAIL` (e-mail fixo do suporte)
 
-Se SMTP não estiver configurado, a aplicação continua funcionando e apenas registra aviso no log quando o envio falhar.
+### Exemplo Gmail
+
+```env
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=seu_email@gmail.com
+SMTP_PASS=sua_senha_de_app
+SMTP_USE_TLS=true
+SUPPORT_EMAIL=andersonbargmann@gmail.com
+```
+
+> Para Gmail, use senha de app (2FA habilitado), não a senha normal da conta.
+
+### Exemplo Office365
+
+```env
+SMTP_HOST=smtp.office365.com
+SMTP_PORT=587
+SMTP_USER=seu_email@empresa.com
+SMTP_PASS=sua_senha
+SMTP_USE_TLS=true
+SUPPORT_EMAIL=andersonbargmann@gmail.com
+```
+
+Se SMTP não estiver configurado corretamente, o chamado é criado normalmente e o erro de e-mail é registrado no log/console.
 
 ## Banco de dados
 
