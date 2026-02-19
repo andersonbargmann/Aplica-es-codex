@@ -1,0 +1,101 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ page_title }} | Controle de Empréstimos{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-10">
+        <div class="card shadow-sm border-0">
+            <div class="card-body p-4">
+                <h1 class="h4 mb-4">{{ page_title }}</h1>
+                <form method="POST" class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label" for="retirada">Data e hora da retirada *</label>
+                        <input class="form-control" type="datetime-local" id="retirada" name="retirada" value="{{ agendamento.retirada if agendamento else '' }}" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="devolucao">Data e hora da devolução *</label>
+                        <input class="form-control" type="datetime-local" id="devolucao" name="devolucao" value="{{ agendamento.devolucao if agendamento else '' }}" required>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label" for="marca">Marca *</label>
+                        <input class="form-control" type="text" id="marca" name="marca" value="{{ agendamento.marca if agendamento else '' }}" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="modelo">Modelo *</label>
+                        <input class="form-control" type="text" id="modelo" name="modelo" value="{{ agendamento.modelo if agendamento else '' }}" required>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label" for="usuario">Usuário (nome completo) *</label>
+                        <input class="form-control" type="text" id="usuario" name="usuario" value="{{ agendamento.usuario if agendamento else '' }}" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="evento">Evento *</label>
+                        <input class="form-control" type="text" id="evento" name="evento" value="{{ agendamento.evento if agendamento else '' }}" required>
+                    </div>
+
+                    <div class="col-12">
+                        <label class="form-label d-block">Acessórios</label>
+                        <div class="row row-cols-1 row-cols-md-2 g-2">
+                            <div class="col form-check">
+                                <input class="form-check-input" type="checkbox" id="mouse_sem_fio" name="mouse_sem_fio" {% if agendamento and agendamento.mouse_sem_fio %}checked{% endif %}>
+                                <label class="form-check-label" for="mouse_sem_fio">Mouse sem fio</label>
+                            </div>
+                            <div class="col form-check">
+                                <input class="form-check-input" type="checkbox" id="mouse_com_fio" name="mouse_com_fio" {% if agendamento and agendamento.mouse_com_fio %}checked{% endif %}>
+                                <label class="form-check-label" for="mouse_com_fio">Mouse com fio</label>
+                            </div>
+                            <div class="col form-check">
+                                <input class="form-check-input" type="checkbox" id="teclado_sem_fio" name="teclado_sem_fio" {% if agendamento and agendamento.teclado_sem_fio %}checked{% endif %}>
+                                <label class="form-check-label" for="teclado_sem_fio">Teclado sem fio</label>
+                            </div>
+                            <div class="col form-check">
+                                <input class="form-check-input" type="checkbox" id="teclado_com_fio" name="teclado_com_fio" {% if agendamento and agendamento.teclado_com_fio %}checked{% endif %}>
+                                <label class="form-check-label" for="teclado_com_fio">Teclado com fio</label>
+                            </div>
+                            <div class="col form-check">
+                                <input class="form-check-input" type="checkbox" id="carregador" name="carregador" {% if agendamento and agendamento.carregador %}checked{% endif %}>
+                                <label class="form-check-label" for="carregador">Carregador</label>
+                            </div>
+                            <div class="col form-check">
+                                <input class="form-check-input" type="checkbox" id="apresentador" name="apresentador" {% if agendamento and agendamento.apresentador %}checked{% endif %}>
+                                <label class="form-check-label" for="apresentador">Apresentador</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" id="regua_extensao" name="regua_extensao" {% if agendamento and agendamento.regua_extensao %}checked{% endif %}>
+                            <label class="form-check-label" for="regua_extensao">Régua ou extensão elétrica</label>
+                        </div>
+                        <input class="form-control" type="number" min="1" id="regua_quantidade" name="regua_quantidade" placeholder="Quantidade" value="{{ agendamento.regua_quantidade if agendamento and agendamento.regua_quantidade else '' }}">
+                        <small class="text-secondary">Obrigatório quando o item estiver marcado.</small>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label" for="status">Status do empréstimo *</label>
+                        <select class="form-select" id="status" name="status" required>
+                            {% for status in status_options %}
+                                <option value="{{ status }}" {% if agendamento and agendamento.status == status %}selected{% endif %}>{{ status }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="col-12">
+                        <label class="form-label" for="observacoes">Observações</label>
+                        <textarea class="form-control" id="observacoes" name="observacoes" rows="3">{{ agendamento.observacoes if agendamento else '' }}</textarea>
+                    </div>
+
+                    <div class="col-12 d-flex gap-2 pt-2">
+                        <button class="btn btn-primary" type="submit">{{ action_label }}</button>
+                        <a class="btn btn-outline-secondary" href="{{ url_for('index') }}">Cancelar</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
