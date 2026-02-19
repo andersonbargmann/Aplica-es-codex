@@ -1,0 +1,16 @@
+body {
+    background: #f5f7fb;
+}
+
+.card {
+    border-radius: 0.9rem;
+}
+
+.table th,
+.table td {
+    vertical-align: middle;
+}
+
+.form-check {
+    padding-left: 1.8rem;
+}

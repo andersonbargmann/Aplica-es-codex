@@ -1,0 +1,94 @@
+{% extends 'base.html' %}
+
+{% block title %}Agendamentos | Controle de Empréstimos{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
+    <div>
+        <h1 class="h3 mb-1">Agendamentos de notebooks</h1>
+        <p class="text-secondary mb-0">Gerencie retiradas e devoluções de equipamentos de TI.</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a class="btn btn-outline-success" href="{{ url_for('exportar_csv') }}">Exportar CSV</a>
+        <a class="btn btn-primary" href="{{ url_for('novo_agendamento') }}">Novo agendamento</a>
+    </div>
+</div>
+
+<form method="GET" action="{{ url_for('index') }}" class="card card-body mb-3 shadow-sm border-0">
+    <div class="row g-2 align-items-end">
+        <div class="col-md-8">
+            <label for="search" class="form-label">Buscar por usuário ou evento</label>
+            <input
+                type="text"
+                class="form-control"
+                id="search"
+                name="search"
+                value="{{ search }}"
+                placeholder="Ex.: João Silva ou Workshop de Dados"
+            >
+        </div>
+        <div class="col-md-4 d-flex gap-2">
+            <button class="btn btn-primary w-100" type="submit">Filtrar</button>
+            <a class="btn btn-outline-secondary w-100" href="{{ url_for('index') }}">Limpar</a>
+        </div>
+    </div>
+</form>
+
+<div class="card shadow-sm border-0">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>ID</th>
+                    <th>Usuário</th>
+                    <th>Marca</th>
+                    <th>Modelo</th>
+                    <th>Evento</th>
+                    <th>Retirada</th>
+                    <th>Devolução</th>
+                    <th>Acessórios</th>
+                    <th>Observações</th>
+                    <th>Status</th>
+                    <th class="text-center">Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in agendamentos %}
+                <tr>
+                    <td>{{ item.id }}</td>
+                    <td>{{ item.usuario }}</td>
+                    <td>{{ item.marca }}</td>
+                    <td>{{ item.modelo }}</td>
+                    <td>{{ item.evento }}</td>
+                    <td>{{ item.retirada|format_datetime }}</td>
+                    <td>{{ item.devolucao|format_datetime }}</td>
+                    <td>{{ item|accessories_text }}</td>
+                    <td>{{ item.observacoes or '-' }}</td>
+                    <td>
+                        {% if item.status == 'Agendado' %}
+                            <span class="badge text-bg-secondary">{{ item.status }}</span>
+                        {% elif item.status == 'Retirado' %}
+                            <span class="badge text-bg-warning">{{ item.status }}</span>
+                        {% else %}
+                            <span class="badge text-bg-success">{{ item.status }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-center">
+                        <div class="d-flex gap-2 justify-content-center">
+                            <a class="btn btn-sm btn-outline-primary" href="{{ url_for('editar_agendamento', agendamento_id=item.id) }}">Editar</a>
+                            <form method="POST" action="{{ url_for('excluir_agendamento', agendamento_id=item.id) }}" onsubmit="return confirm('Deseja realmente excluir este agendamento?');">
+                                <button class="btn btn-sm btn-outline-danger" type="submit">Excluir</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="11" class="text-center text-secondary py-4">Nenhum agendamento cadastrado.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
